@@ -390,7 +390,34 @@ install.sh         ← 一键安装
 
 ---
 
-**派派只做一件事：把你的消息送到 Claude 面前。剩下的，Claude 搞定。**
+## Roadmap
+
+- [x] TG + 微信双通道轮询
+- [x] 跨平台���播（WX↔TG）
+- [x] 远程命令执行（/run /status /restart）
+- [x] 菜单系统
+- [x] Webhook REST API
+- [x] 消息直达 Claude 主会话
+- [x] 语音对话（faster-whisper + edge-tts）
+- [x] 微信图片 AES 解密
+- [x] 消息去重 + 优先级标记
+- [x] systemd 服务 + 开机全自启
+- [x] 一键安装脚本
+- [x] 安全三层过���
+- [ ] 微信语音消息支持（iLink API 语音收发）
+- [ ] 图片理解（收到图片直接让 Claude 分析）
+- [ ] 多用户支持（TG_OWNER 白名单化）
+- [ ] Docker 一键部署（Dockerfile + compose）
+- [ ] Web 管理面板（查看消息历史、服务状态）
+- [ ] 消息持久化（SQLite 替代 jsonl���
+- [ ] 会话上下文（连续对话记忆）
+- [ ] 定时任务管理（TG/微信中管理 cron）
+- [ ] 文件传输（TG/微信发文件 → 服务器）
+- [ ] 插件系统（自定义命令扩展）
+
+---
+
+**派派只做一件事：把你���消息送到 Claude 面前。剩下的，Claude 搞定。**
 
 ## License
 
