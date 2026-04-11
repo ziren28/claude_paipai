@@ -4,6 +4,16 @@
 
 **核心理念：** 利用 Claude Code 订阅（$100-200/月），不花 API 费用，通过社交平台实现完整的 AI 代理体验 — 包括语音对话、远程运维、跨平台消息同步。
 
+## 一键安装
+
+```bash
+git clone https://github.com/ziren28/claude_paipai.git
+cd claude_paipai
+bash install.sh
+```
+
+安装脚本会引导你完成：TG Bot 配置 → 微信绑定 → 依赖安装 → 语音模型下载 → systemd 部署 → 快捷命令设置。
+
 ## 它能做什么
 
 - 🔄 **双通道消息** — Telegram + 微信 (iLink API) 统一收发
@@ -13,6 +23,9 @@
 - 🖥️ **远程运维** — 手机上执行服务器命令、查看状态、重启服务
 - ⚡ **流式回复** — TG 打字机效果实时输出，微信分块推送
 - 🌐 **Webhook API** — 外部系统接入，自动化工作流
+- 🔑 **SSH 多机管理** — 通过远程命令 SSH 到其他服务器
+- 🌍 **浏览器自动化** — 配合 Chromium 容器实现网站签到、操作
+- 🛡️ **翻墙节点维护** — 远程管理代理服务器、检查节点状态
 
 ---
 
@@ -150,79 +163,115 @@ Claude: 找到问题了，第52行的数据库连接字符串缺少端口号...
          → [自动同步到 TG: [WX→TG] 🤖 ...]
 ```
 
-### 场景 5：定时任务 + 通知
-> 每天自动签到并汇报
+### 场景 5：定时任务 + 浏览器签到
+> 配合 Chromium 容器自动签到
 
 ```
+# 部署 Chromium 容器
+docker run -d --name chromium -p 30001:3000 lscr.io/linuxserver/chromium:latest
+
 # cron: 0 8 * * *
-nodeseek_cron.sh 执行签到
-  → 派派推送结果到 TG + 微信
-  → "📅 NodeSeek 每日任务完成: +10 积分"
+# nodeseek_cron.sh 通过 CDP 协议操控浏览器
+#   → 自动登录 + 签到 + 浏览热帖
+#   → 派派推送结果到 TG + 微信
+#   → "📅 NodeSeek 每日任务完成: +10 积分"
+```
+
+### 场景 6：SSH 多机管理
+> 手机上管理多台服务器
+
+```
+你 (TG): /run ssh vps2 "systemctl status v2ray"
+派派: ● v2ray.service - V2Ray Service
+      Active: active (running) since ...
+
+你 (TG): /run ssh vps3 "free -h && df -h"
+派派: [返回 vps3 的内存和磁盘信息]
+```
+
+**SSH 免密配置：**
+```bash
+# 在派派所在服务器上生成密钥并分发
+ssh-keygen -t ed25519
+ssh-copy-id user@vps2
+ssh-copy-id user@vps3
+
+# 配置 ~/.ssh/config 简化命令
+Host vps2
+    HostName 1.2.3.4
+    User root
+Host vps3
+    HostName 5.6.7.8
+    User root
+```
+
+### 场景 7：翻墙节点维护
+> 远程检查和管理代理节点
+
+```
+你 (TG): /run ssh vps-hk "systemctl status xray && xray version"
+派派: ✅ xray active | Xray 1.8.x
+
+你 (TG): /run for h in vps-hk vps-jp vps-sg; do echo "==$h=="; ssh $h "ping -c1 google.com >/dev/null 2>&1 && echo OK || echo FAIL"; done
+派派:
+  ==vps-hk== OK
+  ==vps-jp== OK
+  ==vps-sg== FAIL   ← 新加坡节点挂了
+
+你 (TG): /run ssh vps-sg "systemctl restart xray"
+派派: ✅ done
+```
+
+### 场景 8：浏览器自动化
+> 通过 CDP 协议远程操控 Chromium
+
+```
+你 (TG): /run docker exec chromium python3 /config/checkin.py
+派派: ✅ 签到成功: +5 积分
+
+# 支持任何网站的自动化操作：
+# - 每日签到 (论坛、云服务)
+# - 截图监控
+# - 表单填写
+# - 数据抓取
 ```
 
 ---
 
 ## 快速开始
 
-### 前置条件
-
-- Linux 服务器 (推荐 2vCPU / 8GB RAM)
-- Python 3.10+
-- Claude Code CLI 已安装且已登录
-- Telegram Bot Token (@BotFather 创建)
-- 微信 iLink Bot (可选)
-
-### 1. 克隆项目
+### 方式一：一键安装（推荐）
 
 ```bash
 git clone https://github.com/ziren28/claude_paipai.git
 cd claude_paipai
+bash install.sh
 ```
 
-### 2. 安装依赖
+脚本自动完成：
+1. 检查 Python / ffmpeg / tmux 环境
+2. 安装 Python 依赖
+3. 引导输入 **TG Bot Token** 和 **User ID**
+4. 引导配置 **微信 iLink Bot**（可选，扫码绑定）
+5. 下载语音识别模型 (~1.5GB)
+6. 生成 `.env` 配置 + systemd 服务
+7. 配置快捷命令并启动
+
+### 方式二：手动安装
 
 ```bash
+git clone https://github.com/ziren28/claude_paipai.git
+cd claude_paipai
 pip install httpx cryptography faster-whisper edge-tts
+cp .env.example .env && vim .env
 ```
 
-### 3. 配置环境变量
-
-```bash
-cp .env.example .env
-vim .env
-```
-
-```bash
-TG_TOKEN=your_telegram_bot_token      # @BotFather 获取
-TG_OWNER=your_telegram_user_id        # @userinfobot 获取
-WX_STATE_FILE=/path/to/state.json     # 微信 iLink Bot 状态文件
-WEBHOOK_TOKEN=your_webhook_secret     # Webhook API 认证密钥
-```
-
-### 4. 部署为 systemd 服务
-
-```bash
-cat > /etc/systemd/system/inbox-poller.service << 'EOF'
-[Unit]
-Description=Claude Paipai Message Hub
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/path/to/claude_paipai
-EnvironmentFile=/path/to/claude_paipai/.env
-ExecStart=/usr/bin/python3 poller.py
-Restart=always
-RestartSec=5
-StandardOutput=append:/path/to/claude_paipai/poller.log
-StandardError=append:/path/to/claude_paipai/poller.log
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-systemctl enable --now inbox-poller
-```
+| 变量 | 说明 | 获取方式 |
+|------|------|---------|
+| `TG_TOKEN` | Telegram Bot Token | @BotFather 创建 Bot |
+| `TG_OWNER` | 你的 TG User ID | @userinfobot 发消息 |
+| `WX_STATE_FILE` | 微信 state.json 路径 | 微信 iLink Bot 扫码生成 |
+| `WEBHOOK_TOKEN` | Webhook API 密钥 | 自定义字符串 |
 
 ---
 
@@ -367,6 +416,38 @@ python3 stream_reply.py <id>   # 流式回复
 
 ## 跨平台广播
 reply.py 自动广播到另一个平台，无需手动操作。
+```
+
+---
+
+## 快捷命令
+
+安装脚本自动配置，或手动添加到 `~/.bashrc`：
+
+```bash
+# Claude Code 快捷启动
+alias cc='claude'                                          # 启动 Claude
+alias cca='claude --dangerously-skip-permissions'          # 自动模式
+alias ccr='tmux new -s claude "claude --dangerously-skip-permissions" || tmux attach -t claude'
+                                                           # tmux 中启动/恢复 (推荐)
+
+# 派派消息管理
+alias pp='python3 /root/paipai/reply.py'                  # 回复: pp <id> "内容"
+alias pp-list='python3 /root/paipai/reply.py --list'      # 查看待处理
+alias pp-log='tail -f /root/paipai/poller.log'            # 实时日志
+alias pp-restart='systemctl restart inbox-poller'          # 重启服务
+alias pp-status='systemctl status inbox-poller --no-pager' # 服务状态
+```
+
+**日常使用：**
+```bash
+ccr              # 一键进入 Claude (tmux 持久)
+# 在 Claude 里说 "唤醒派派" 即开始工作
+
+# 另一个终端快速操作
+pp-list          # 有新消息？
+pp abc123 "好的" # 快速回复
+pp-log           # 看看发生了什么
 ```
 
 ---
