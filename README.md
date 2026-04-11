@@ -122,6 +122,7 @@ curl -X POST localhost:8900/api/message \
    - cc='claude'
    - cca='claude --dangerously-skip-permissions'  
    - ccr='tmux + claude 自动模式'
+   - go='回到 claude 会话'
    - pp/pp-list/pp-log/pp-restart 消息管理
 7. 启动服务，验证 poller 正常运行
 8. 在 CLAUDE.md 中配置派派自动挂载提示
@@ -147,7 +148,8 @@ cd claude_paipai && bash install.sh
 ### 1. 启动 Claude
 
 ```bash
-ccr    # 一键：tmux + Claude 自动模式
+ccr    # 首次：创建 tmux 会话 + 启动 Claude 自动模式
+go     # 之后：直接回到 Claude 会话（tmux attach）
 ```
 
 ### 2. 唤醒派派

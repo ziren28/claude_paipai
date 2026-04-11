@@ -238,6 +238,7 @@ if ! grep -q "# Claude Paipai aliases" "$SHELL_RC" 2>/dev/null; then
 alias cc='claude'
 alias cca='claude --dangerously-skip-permissions'
 alias ccr='tmux new -s claude "claude --dangerously-skip-permissions" || tmux attach -t claude'
+alias go='tmux attach -t claude'
 alias pp='python3 /root/paipai/reply.py'
 alias pp-list='python3 /root/paipai/reply.py --list'
 alias pp-log='tail -f /root/paipai/poller.log'
