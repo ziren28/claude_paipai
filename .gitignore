@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+*.log
+messages.jsonl
+images/
+files/
+claude_status.json
+actions.log
+nodeseek.log
+*.bak
