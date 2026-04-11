@@ -278,6 +278,78 @@ U=$(df / | tail -1 | awk '{print $5}' | tr -d '%')
 
 ---
 
+## 安全性 — 三层过滤，只听你一个人的
+
+派派拥有服务器完整控制权（`/run` 可执行任意命令），安全设计至关重要。
+
+### 第一层：身份锁定
+
+**Telegram — User ID 硬过滤**
+
+```python
+# poller.py 核心过滤逻辑
+uid = user.get("id")
+if uid != TG_OWNER:    # 不是你？直接丢弃，连日志都不留
+    continue
+```
+
+只有 `TG_OWNER`（你的 User ID）发的消息才会处理。其他人给 Bot 发消息？**静默丢弃**，不回复、不记录、不处理。不是白名单机制 —— 是**只有一个人**能用。
+
+**微信 — iLink Bot 天然隔离**
+
+微信 iLink Bot 架构决定了 1:1 绑定：一个 Bot 只属于一个微信号，只能收到你自己的消息。**不存在**其他人给你的 Bot 发消息的可能。
+
+### 第二层：Webhook Token 认证
+
+所有 API 请求必须携带 `WEBHOOK_TOKEN`：
+
+```python
+if data.get("token") != WEBHOOK_TOKEN:
+    return {"error": "unauthorized"}, 401   # 拒绝
+```
+
+没有 token？401 拒之门外。token 在 `.env` 文件中，不会进 git。
+
+### 第三层：环境隔离
+
+- 所有 token（TG / 微信 / Webhook）存储在 `.env` 文件，**gitignore 保护**
+- 代码中零硬编码凭证
+- `.env.example` 只有占位符
+- systemd 通过 `EnvironmentFile` 加载，进程外不可见
+
+### 安全总结
+
+```
+外部请求 → TG: User ID ≠ 你？丢弃
+         → 微信: 天然 1:1 绑定
+         → Webhook: 无 token？401
+         → 代码: 零硬编码凭证
+```
+
+**效果：即使有人知道你的 Bot 用户名、服务器 IP、Webhook 端口，没有你的 User ID + Token，什么也做不了。**
+
+---
+
+## 开机全自动
+
+所有服务开机自启，重启服务器后无需任何手动操作：
+
+```
+服务器开机
+  ├─ systemd 自动启动:
+  │   ├─ inbox-poller     ← 派派消息中枢
+  │   ├─ claude-session-tmux ← Claude Code 主会话 (tmux)
+  │   └─ claude-monitor   ← 状态监控
+  ├─ Docker 自动恢复:
+  │   ├─ chromium         ← 浏览器容器
+  │   └─ 其他容器...
+  └─ 一切就绪，手机直接发消息
+```
+
+不需要 SSH 进去敲命令。服务器重启后，派派自动上线，Claude 自动就位。
+
+---
+
 ## 技术细节
 
 | 组件 | 技术 |
