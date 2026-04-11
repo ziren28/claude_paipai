@@ -282,7 +282,17 @@ set -g detach-on-destroy off
 claude --dangerously-skip-permissions
 ```
 
-> ⚠️ 注意：root 用户无法使用此参数，需以普通用户运行。
+> ⚠️ root 用户无法直接使用此参数。解决方案：启用沙箱模式。
+
+```bash
+# 在 settings.json 中启用沙箱
+# ~/.claude/settings.json
+{
+  "sandbox": true
+}
+```
+
+启用沙箱后，Claude Code 在隔离环境中运行，root 用户也可以使用 `--dangerously-skip-permissions`。
 
 **方法二：Allowlist 精细控制**
 
