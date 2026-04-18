@@ -4,6 +4,7 @@ Claude 状态监控 — 定期检测 Claude 进程状态，写入状态文件供
 以 systemd 服务运行，每 5 秒更新一次。
 """
 import json
+import os
 import subprocess
 import time
 import re
@@ -11,6 +12,13 @@ from pathlib import Path
 
 STATUS_FILE = "/root/inbox/claude_status.json"
 POLL_INTERVAL = 5  # seconds
+
+
+def atomic_write_json(path: str, data: dict) -> None:
+    p = Path(path)
+    tmp = p.with_suffix(p.suffix + f".tmp.{os.getpid()}")
+    tmp.write_text(json.dumps(data, ensure_ascii=False))
+    os.replace(tmp, p)
 
 
 def _run(cmd):
@@ -112,12 +120,12 @@ def main():
     while True:
         try:
             status = detect_status()
-            Path(STATUS_FILE).write_text(json.dumps(status, ensure_ascii=False))
+            atomic_write_json(STATUS_FILE, status)
         except Exception as e:
-            Path(STATUS_FILE).write_text(json.dumps({
+            atomic_write_json(STATUS_FILE, {
                 "state": "error", "label": f"监控异常: {e}",
                 "pid": None, "cpu": 0, "mem": 0, "uptime": "", "task": "", "ts": time.time(),
-            }))
+            })
         time.sleep(POLL_INTERVAL)
 
 

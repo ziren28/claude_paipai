@@ -26,7 +26,7 @@ TG_TOKEN = os.environ.get("TG_TOKEN", "")
 TG_API = f"https://api.telegram.org/bot{TG_TOKEN}"
 TG_OWNER_CHAT = int(os.environ.get("TG_OWNER", "0"))
 
-WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/wechat-bot/state.json")
+WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/paipai/wechat/state.json")
 WX_STATE = json.loads(Path(WX_STATE_FILE).read_text()) if Path(WX_STATE_FILE).exists() else {}
 WX_OWNER = WX_STATE.get("owner_user_id", "")
 
@@ -337,6 +337,14 @@ async def main():
     if not msg:
         print(f"Message {msg_id} not found")
         return
+    if msg.get("status") == "replied":
+        print(f"Message {msg_id} already replied; skipping to avoid duplicate send")
+        return
+    # Stale protection: don't auto-process messages older than 10 minutes
+    # (prevents bombardment on service restart with backlogged inbox)
+    if custom_prompt is None and (time.time() - msg.get("ts", 0) > 600):
+        print(f"Message {msg_id} is stale (>10min); skipping auto-reply")
+        return
 
     # Build prompt
     prompt = custom_prompt or msg.get("text", "")
@@ -365,14 +373,10 @@ async def main():
         # Stream Claude response
         final_text, session_id = await stream_claude(prompt, streamer)
 
-        # Send final message to source platform
+        # Send final message to source platform only — no cross-platform broadcast.
+        # Broadcast was removed because the echoed reply was being re-ingested by
+        # WX getupdates and triggering another auto-reply, forming a bombing loop.
         await streamer.finish(final_text)
-
-        # Broadcast to other platform
-        try:
-            await broadcast_final(client, msg, final_text)
-        except Exception as e:
-            print(f"Broadcast error: {e}", flush=True)
 
         # Mark as replied
         mark_replied(msg_id, final_text)

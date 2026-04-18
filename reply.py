@@ -24,7 +24,7 @@ TG_API = f"https://api.telegram.org/bot{TG_TOKEN}"
 TG_OWNER_CHAT = int(os.environ.get("TG_OWNER", "0"))
 
 # WX
-WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/wechat-bot/state.json")
+WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/paipai/wechat/state.json")
 WX_STATE = json.loads(Path(WX_STATE_FILE).read_text()) if Path(WX_STATE_FILE).exists() else {}
 WX_OWNER = WX_STATE.get("owner_user_id", "")
 
@@ -123,18 +123,15 @@ def reply(msg_id, text):
     if not m:
         print(f"Message {msg_id} not found")
         return
-    # Send to source
+    if m.get("status") == "replied":
+        print(f"Message {msg_id} already replied; skipping to avoid duplicate send")
+        return
     if m["source"] == "tg":
         send_tg(m["chat_id"], text, m.get("msg_id"))
-        # Broadcast to WX
-        if WX_OWNER:
-            send_wx(WX_OWNER, f"[TG→WX]\n{text}")
     elif m["source"] == "wx":
         send_wx(m["from_user"], text, m.get("context_token"))
-        # Broadcast to TG
-        send_tg(TG_OWNER_CHAT, f"[WX→TG]\n{text}")
     store_mark_replied(msg_id, text)
-    print(f"Replied to {msg_id} (broadcast)")
+    print(f"Replied to {msg_id}")
 
 
 def mark_replied(msg_id):

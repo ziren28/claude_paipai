@@ -9,5 +9,9 @@ claude_status.json
 actions.log
 nodeseek.log
 *.bak
-wechat/state.json
+
+# Runtime state (sensitive / machine-local)
+.poller_state.json
 wechat/
+wechat/state.json
+wechat/*.json

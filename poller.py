@@ -46,7 +46,7 @@ TG_OWNER = int(os.environ.get("TG_OWNER", "0"))
 TG_API = f"https://api.telegram.org/bot{TG_TOKEN}"
 
 # WeChat
-WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/wechat-bot/state.json")
+WX_STATE_FILE = os.environ.get("WX_STATE_FILE", "/root/paipai/wechat/state.json")
 
 # Claude status
 STATUS_FILE = os.environ.get("STATUS_FILE", "/root/inbox/claude_status.json")
@@ -72,9 +72,48 @@ PRIORITY_PREFIXES = {
     "/btw": "btw",
 }
 
-# Dedup: track recent message fingerprints (survives within process lifetime)
-_recent_msgs = set()
+# Dedup + TG offset persisted to disk — survives poller restarts so we do not
+# re-ingest old messages after a crash/restart (that was the bombardment root cause).
+POLLER_STATE_FILE = "/root/paipai/.poller_state.json"
 _DEDUP_MAX = 500
+_recent_msgs: set = set()
+_tg_offset_cached: int = 0
+
+def _load_poller_state():
+    global _recent_msgs, _tg_offset_cached
+    try:
+        st = json.loads(Path(POLLER_STATE_FILE).read_text())
+        _recent_msgs = set(st.get("recent_msgs", []))
+        _tg_offset_cached = int(st.get("tg_offset", 0))
+    except Exception:
+        _recent_msgs = set()
+        _tg_offset_cached = 0
+
+def _save_poller_state():
+    try:
+        # Trim to bounded size (keep most-recent half)
+        recent_list = list(_recent_msgs)[-_DEDUP_MAX:]
+        Path(POLLER_STATE_FILE).write_text(json.dumps({
+            "recent_msgs": recent_list,
+            "tg_offset": _tg_offset_cached,
+        }, ensure_ascii=False))
+    except Exception as e:
+        log.warning(f"poller state save failed: {e}")
+
+_load_poller_state()
+
+# Echo guard — text starting with any of these is a bot-emitted message
+# being reflected back through the channel; never store, never auto-reply.
+ECHO_PREFIXES = (
+    "📨 收到", "🤖 ", "🔮 Hermes", "[TG→WX]", "[WX→TG]",
+    "[完成]", "[▌]", "[✓]", "⏳ 思考中", "$ ",
+)
+
+def _is_echo(text: str) -> bool:
+    if not text:
+        return False
+    s = text.lstrip()
+    return any(s.startswith(p) for p in ECHO_PREFIXES)
 
 def _msg_fingerprint(msg: dict) -> str:
     """Generate fingerprint from source + key fields to detect duplicates."""
@@ -82,20 +121,30 @@ def _msg_fingerprint(msg: dict) -> str:
     if src == "tg":
         return f"tg:{msg.get('msg_id','')}"
     elif src == "wx":
-        # WX has no unique msg_id, use text+ts hash
-        return f"wx:{msg.get('text','')[:50]}:{msg.get('from_user','')[-8:]}"
+        # context_token is the WX server's unique reference for this message
+        # (re-delivery on reconnect reuses it). Fall back to text+from+minute-bucket.
+        ctx = msg.get("context_token", "")
+        if ctx:
+            return f"wx:ctx:{ctx[-24:]}"
+        minute_bucket = int(msg.get("ts", time.time())) // 60
+        return f"wx:{msg.get('from_user','')[-12:]}:{minute_bucket}:{msg.get('text','')[:50]}"
     return ""
 
 def save_message(msg: dict):
-    """Append message to inbox. Parses /prefix for priority. Dedup."""
+    """Append message to inbox. Parses /prefix for priority. Dedup. Echo guard."""
+    if _is_echo(msg.get("text", "")):
+        log.info(f"🔁 echo blocked: {msg.get('text','')[:40]}")
+        return
     fp = _msg_fingerprint(msg)
     if fp and fp in _recent_msgs:
-        log.debug(f"Dedup: skipping {fp}")
+        log.info(f"🔁 dedup skip: {fp}")
         return
     if fp:
         _recent_msgs.add(fp)
         if len(_recent_msgs) > _DEDUP_MAX:
-            _recent_msgs.clear()
+            # Keep newest half instead of clearing (prevents re-admission of old msgs)
+            _recent_msgs.intersection_update(list(_recent_msgs)[-_DEDUP_MAX // 2:])
+        _save_poller_state()
 
     msg.setdefault("id", uuid.uuid4().hex[:12])
     msg.setdefault("status", "pending")
@@ -357,7 +406,9 @@ async def handle_command(client: httpx.AsyncClient, text: str, source: str, **ct
 # ======================== TG Poller ========================
 
 async def tg_poll():
-    offset = 0
+    global _tg_offset_cached
+    offset = _tg_offset_cached
+    log.info(f"✈️ TG 恢复 offset={offset}")
     async with httpx.AsyncClient() as client:
         log.info("✈️ TG 通道就绪")
         while True:
@@ -374,6 +425,8 @@ async def tg_poll():
 
                 for update in data.get("result", []):
                     offset = update["update_id"] + 1
+                    _tg_offset_cached = offset
+                    _save_poller_state()
                     msg = update.get("message")
                     if not msg:
                         continue
@@ -753,65 +806,81 @@ async def start_webhook():
 # Toggle: "off" / "auto" (smart) / "lite" (API only) / "full" (claude -p only)
 PAIPAI_MODE = "auto"
 
+def _read_status(retries: int = 3, delay: float = 0.05) -> dict:
+    """Read status JSON, tolerating momentary write races."""
+    for _ in range(retries):
+        try:
+            raw = Path(STATUS_FILE).read_text()
+            if raw:
+                return json.loads(raw)
+        except Exception:
+            pass
+        time.sleep(delay)
+    return {}
+
 def _detect_mode():
     """Auto mode: lite normally, full when main session is down."""
     if PAIPAI_MODE == "auto":
-        try:
-            cs = json.loads(Path(STATUS_FILE).read_text())
-            if cs.get("state") in ("offline", "error"):
-                return "full"
-        except Exception:
+        cs = _read_status()
+        if not cs:
             return "full"  # can't read status = assume down
+        if cs.get("state") in ("offline", "error"):
+            return "full"
         return "lite"
     return PAIPAI_MODE
 
+_AUTO_REPLY_LOCKS: dict = {}
+_AUTO_REPLY_STALE_SEC = 300  # 5min: skip backlogged msgs on restart
+
+def _user_key(entry: dict) -> str:
+    src = entry.get("source", "")
+    if src == "tg":
+        return f"tg:{entry.get('chat_id', '')}"
+    return f"wx:{entry.get('from_user', '')}"
+
 async def auto_reply(client: httpx.AsyncClient, entry: dict):
-    """派派 AI 自动回复。出错时静默降级，不打扰用户。"""
+    """派派 AI 自动回复。出错时静默降级，不打扰用户。
+    无 ACK、无跨平台广播 — 避免轰炸。
+    陈旧消息（>5min）跳过，防止重启后批量回放造成轰炸。
+    同 user 互斥锁，防止并发消息并行触发多个 AI 调用。
+    """
     mode = _detect_mode()
     if mode == "off":
         return
     source = entry["source"]
     text = entry.get("text", "")
-    if not text:
+    if not text or _is_echo(text):
         return
 
-    # 1. 即时确认（简洁）
-    cs = {}
-    try:
-        cs = json.loads(Path(STATUS_FILE).read_text())
-    except Exception:
-        pass
-    status_icon = {"idle": "🟢", "busy": "🔴", "thinking": "🟡", "offline": "⚫"}.get(cs.get("state", ""), "⚪")
-    ack = f"📨 收到 | Claude {status_icon}{cs.get('label', '未知')}"
-
-    if source == "tg":
-        await send_tg_reply(client, entry["chat_id"], ack, entry.get("msg_id"))
-    elif source == "wx":
-        await send_wx_reply(client, entry["from_user"], ack, entry.get("context_token"))
-
-    # 2. 派派 AI 思考
-    try:
-        reply = await paipai_think_full(text)
-    except Exception as e:
-        log.error(f"派派AI错误: {e}")
-        # 静默降级 — 不发错误给用户，消息已存 inbox 等主会话处理
+    # Stale protection
+    age = time.time() - entry.get("ts", time.time())
+    if age > _AUTO_REPLY_STALE_SEC:
+        log.info(f"⏭️ stale skip ({int(age)}s): {text[:40]}")
         return
 
-    # 检查是否真的有内容（排除错误回复）
-    if not reply or "未返回内容" in reply or "出错" in reply or "失败" in reply:
-        log.warning(f"派派AI无效回复，静默降级: {reply[:40]}")
+    # Per-user lock to serialize replies (avoid burst bombardment)
+    ukey = _user_key(entry)
+    lock = _AUTO_REPLY_LOCKS.setdefault(ukey, asyncio.Lock())
+    if lock.locked():
+        log.info(f"🚧 auto_reply busy for {ukey}, skipping: {text[:40]}")
         return
 
-    # 3. 推送回复 + 跨平台广播
+    async with lock:
+        try:
+            reply = await paipai_think_full(text)
+        except Exception as e:
+            log.error(f"派派AI错误: {e}")
+            return
+
+        if not reply or "未返回内容" in reply or "出错" in reply or "失败" in reply or "超时" in reply:
+            log.warning(f"派派AI无效回复，静默降级: {reply[:40]}")
+            return
+
+    # 仅推送到来源平台，不跨平台广播
     if source == "tg":
         await send_tg_reply(client, entry["chat_id"], f"🤖 {reply}", entry.get("msg_id"))
-        wx_state = json.loads(Path(WX_STATE_FILE).read_text())
-        wx_owner = wx_state.get("owner_user_id", "")
-        if wx_owner:
-            await send_wx_reply(client, wx_owner, f"[TG→WX] 🤖 {reply}")
     elif source == "wx":
         await send_wx_reply(client, entry["from_user"], f"🤖 {reply}", entry.get("context_token"))
-        await send_tg_reply(client, TG_OWNER, f"[WX→TG] 🤖 {reply}")
 
     log.info(f"🤖 派派回复 → {source}: {reply[:40]}")
 
@@ -903,6 +972,7 @@ async def voice_reply(client: httpx.AsyncClient, entry: dict):
 
 async def main():
     log.info(f"🚀 派派启动 | 消息 → {MSG_FILE}")
+    _save_poller_state()  # materialize state file immediately
     await asyncio.gather(tg_poll(), wx_poll(), start_webhook())
 
 if __name__ == "__main__":
