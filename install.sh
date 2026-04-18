@@ -135,17 +135,41 @@ WX_STATE_FILE=""
 if [[ "$setup_wx" == "y" || "$setup_wx" == "Y" ]]; then
     WX_STATE_DIR="$INSTALL_DIR/wechat"
     mkdir -p "$WX_STATE_DIR"
+    WX_STATE_FILE="$WX_STATE_DIR/state.json"
 
     echo ""
-    echo -e "  ${CYAN}微信登录步骤:${NC}"
-    echo "  1. 手机微信 → 设置 → 聊天 → 智能助手 → 开启"
-    echo "  2. 创建 Bot 后获取 bot_token"
+    echo -e "  ${CYAN}选择微信配置方式:${NC}"
+    echo "  1) 扫码绑定 (推荐，自动获取 token)"
+    echo "  2) 手动输入 token"
     echo ""
-    read -p "  微信 Bot Token: " WX_BOT_TOKEN
-    read -p "  Owner User ID (微信号对应的 iLink ID): " WX_OWNER_ID
+    read -p "  请选择 [1/2] (默认 1): " wx_method
+    wx_method="${wx_method:-1}"
 
-    if [ -n "$WX_BOT_TOKEN" ]; then
-        cat > "$WX_STATE_DIR/state.json" << WXEOF
+    if [[ "$wx_method" == "1" ]]; then
+        echo ""
+        echo -e "  ${CYAN}微信扫码绑定步骤:${NC}"
+        echo "  1. 确保手机微信已开启智能助手 (设置 → 聊天 → 智能助手)"
+        echo "  2. 运行后会显示二维码链接，用微信扫码确认即可"
+        echo ""
+        python3 "$INSTALL_DIR/wx_qr_bind.py" --state "$WX_STATE_FILE"
+        if [ $? -ne 0 ]; then
+            echo -e "  ${RED}扫码绑定失败，可稍后手动运行:${NC}"
+            echo "    python3 $INSTALL_DIR/wx_qr_bind.py --state $WX_STATE_FILE"
+            WX_STATE_FILE=""
+        else
+            echo -e "  ${GREEN}微信扫码绑定成功${NC}"
+        fi
+    else
+        echo ""
+        echo -e "  ${CYAN}微信手动配置:${NC}"
+        echo "  1. 手机微信 → 设置 → 聊天 → 智能助手 → 开启"
+        echo "  2. 创建 Bot 后获取 bot_token"
+        echo ""
+        read -p "  微信 Bot Token: " WX_BOT_TOKEN
+        read -p "  Owner User ID (微信号对应的 iLink ID): " WX_OWNER_ID
+
+        if [ -n "$WX_BOT_TOKEN" ]; then
+            cat > "$WX_STATE_FILE" << WXEOF
 {
     "bot_token": "${WX_BOT_TOKEN}",
     "base_url": "https://ilinkai.weixin.qq.com",
@@ -153,8 +177,10 @@ if [[ "$setup_wx" == "y" || "$setup_wx" == "Y" ]]; then
     "owner_user_id": "${WX_OWNER_ID}"
 }
 WXEOF
-        WX_STATE_FILE="$WX_STATE_DIR/state.json"
-        echo -e "  ${GREEN}微信配置已保存${NC}"
+            echo -e "  ${GREEN}微信配置已保存${NC}"
+        else
+            WX_STATE_FILE=""
+        fi
     fi
 fi
 echo ""

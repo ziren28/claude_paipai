@@ -487,6 +487,133 @@ if data.get("token") != WEBHOOK_TOKEN:
 
 ---
 
+## 微信扫码绑定
+
+不需要手动获取 bot_token，一条命令扫码搞定：
+
+```bash
+python3 wx_qr_bind.py
+```
+
+脚本会：
+1. 调用微信 iLink API 获取登录二维码
+2. 显示二维码链接，用微信扫码确认
+3. 自动获取 `bot_token`、`owner_user_id`、`base_url`
+4. 写入 `wechat/state.json`，格式兼容 poller.py
+
+**参数：**
+
+```bash
+python3 wx_qr_bind.py                              # 默认路径
+python3 wx_qr_bind.py --state /root/paipai/wechat/state.json  # 指定路径
+python3 wx_qr_bind.py --env                         # 同时更新 .env
+```
+
+**原理：** 逆向自 `@tencent-weixin/openclaw-weixin` 插件协议，直接对接 `https://ilinkai.weixin.qq.com/ilink/bot/get_bot_qrcode` API，无需安装 OpenClaw。
+
+<details>
+<summary>📦 扫码流程详解（点击展开）</summary>
+
+```
+1. GET /ilink/bot/get_bot_qrcode?bot_type=3
+   → 返回 { qrcode: "token", qrcode_img_content: "https://..." }
+
+2. 用户用微信扫描 qrcode_img_content 链接
+
+3. GET /ilink/bot/get_qrcode_status?qrcode=<token>  (长轮询)
+   → status: "wait" → "scaned" → "confirmed"
+   → confirmed 时返回 bot_token, ilink_bot_id, baseurl, ilink_user_id
+
+4. 写入 state.json:
+   {
+     "bot_token": "xxx",
+     "base_url": "https://ilinkai.weixin.qq.com",
+     "get_updates_buf": "",
+     "owner_user_id": "xxx",
+     "ilink_bot_id": "xxx"
+   }
+```
+
+支持二维码过期自动刷新（最多 3 次）和 IDC 重定向。
+
+</details>
+
+---
+
+## 自动挂载 — SessionStart Hook
+
+派派的核心设计：Claude Code 启动时**自动挂载** inbox 消息监听，无需手动输入"唤醒派派"。
+
+### 工作原理
+
+```
+Claude Code 启动
+  ↓
+SessionStart hook 触发
+  ↓
+hooks/session-start.sh 输出 additionalContext
+  ↓
+Claude 读取指令，自动执行 CronCreate
+  ↓
+每分钟检查 /root/inbox/messages.jsonl
+  ↓
+发现 pending 消息 → 处理 → reply.py 回复
+```
+
+### 配置方法
+
+在 `~/.claude/settings.json` 中添加 hook：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /root/paipai/hooks/session-start.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+hook 脚本 `hooks/session-start.sh` 输出 JSON 格式的 `additionalContext`，告诉 Claude：
+1. 用 `CronCreate` 创建每分钟一次的定时任务
+2. 定时任务检查 inbox 中 `status=pending` 的消息
+3. 有新消息时处理并调用 `reply.py` / `stream_reply.py` 回复
+4. 回复自动广播到 TG + 微信双通道
+
+### 关键细节
+
+- **Session-only**：cron job 仅在当前 Claude 会话中存活，退出即消失（最长 7 天自动过期）
+- **每次启动自动恢复**：因为是 hook，所以每次新建/恢复 Claude 会话都会重新挂载
+- **不依赖 CLAUDE.md**：hook 在 settings.json 层面配置，全局生效，不需要在每个项目目录放 CLAUDE.md
+- **不依赖外部服务**：不需要 cc-bridge，Claude Code 本身就是处理引擎
+
+### 消息处理链路
+
+```
+手机消息 → TG/微信 API
+           ↓
+    poller.py (systemd 服务，7x24 运行)
+           ↓
+    /root/inbox/messages.jsonl (status=pending)
+           ↓
+    Claude Code (CronCreate 每分钟检查)
+           ↓
+    处理消息（回答问题 / 执行命令 / 排查问题）
+           ↓
+    reply.py / stream_reply.py (回复 + 跨平台广播)
+           ↓
+    TG + 微信同时收到回复
+```
+
+---
+
 ## 技术细节
 
 | 组件 | 技术 |
@@ -497,18 +624,22 @@ if data.get("token") != WEBHOOK_TOKEN:
 | 语音合成 | edge-tts (微软, 免费) |
 | 音频 | ffmpeg |
 | 微信图片 | AES-ECB 解密 |
+| 微信绑定 | iLink QR Login API (逆向自 openclaw-weixin) |
+| 自动挂载 | Claude Code SessionStart Hook + CronCreate |
 | 部署 | systemd + tmux |
 
-**文件清单（就这么几个）：**
+**文件清单：**
 
 ```
-poller.py          ← 核心，800 行搞定一切
-reply.py           ← 回复 + 跨平台广播
-stream_reply.py    ← 流式回复（打字机效果）
-msg_store.py       ← 消息存储
-claude_status.py   ← 状态监控
-menu.py            ← 菜单系统
-install.sh         ← 一键安装
+poller.py              ← 核心，消息轮询 + Webhook + AI 自动回复
+reply.py               ← 回复 + 跨平台广播
+stream_reply.py        ← 流式回复（打字机效果）
+msg_store.py           ← 消息存储
+claude_status.py       ← 状态监控
+menu.py                ← 菜单系统
+wx_qr_bind.py          ← 微信扫码绑定工具
+hooks/session-start.sh ← SessionStart hook（自动挂载监听）
+install.sh             ← 一键安装
 ```
 
 ---
@@ -540,7 +671,9 @@ install.sh         ← 一键安装
 - [x] 消息去重 + 优先级标记
 - [x] systemd 服务 + 开机全自启
 - [x] 一键安装脚本
-- [x] 安全三层过���
+- [x] 安全三层过滤
+- [x] 微信扫码绑定（逆向 openclaw-weixin 协议，无需手动获取 token）
+- [x] SessionStart Hook 自动挂载（Claude 启动即监听，无需手动唤醒）
 - [ ] 微信语音消息支持（iLink API 语音收发）
 - [ ] 图片理解（收到图片直接让 Claude 分析）
 - [ ] 多用户支持（TG_OWNER 白名单化）

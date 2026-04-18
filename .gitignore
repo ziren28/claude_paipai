@@ -9,3 +9,5 @@ claude_status.json
 actions.log
 nodeseek.log
 *.bak
+wechat/state.json
+wechat/
