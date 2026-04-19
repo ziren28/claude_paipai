@@ -1,0 +1,14 @@
+[Unit]
+Description=派派记忆折叠（日→周→月）
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/bin/bash -c '/usr/bin/python3 /root/paipai/memory_fold.py daily; \
+  [ $(date +%%u) = 1 ] && /usr/bin/python3 /root/paipai/memory_fold.py weekly; \
+  [ $(date +%%d) = 01 ] && /usr/bin/python3 /root/paipai/memory_fold.py monthly; \
+  true'
+StandardOutput=append:/root/paipai/memory.log
+StandardError=append:/root/paipai/memory.log

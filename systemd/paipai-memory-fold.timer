@@ -1,0 +1,10 @@
+[Unit]
+Description=派派记忆折叠（每天 01:00 UTC 跑日折叠，周一加周折叠，月 1 日加月折叠）
+Requires=paipai-memory-fold.service
+
+[Timer]
+OnCalendar=*-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

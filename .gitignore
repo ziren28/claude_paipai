@@ -27,3 +27,9 @@ tools/dailyhot/node_modules/
 tools/dailyhot/dist/
 tools/dailyhot/logs/
 tools/dailyhot/.env
+.sync_state.json
+sync.log
+archive.log
+memory.log
+memory.db
+memory.db-*

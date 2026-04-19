@@ -1,0 +1,10 @@
+[Unit]
+Description=派派记忆蒸馏（每小时跑一次，处理闭环模块）
+Requires=paipai-memory-distill.service
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+
+[Install]
+WantedBy=timers.target

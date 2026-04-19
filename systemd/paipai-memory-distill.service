@@ -1,0 +1,11 @@
+[Unit]
+Description=派派记忆蒸馏（处理 raw 模块）
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 /root/paipai/memory_distill.py --limit 10
+StandardOutput=append:/root/paipai/memory.log
+StandardError=append:/root/paipai/memory.log
