@@ -1,0 +1,11 @@
+[Unit]
+Description=派派资讯聚合推送
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 /root/paipai/digest.py
+StandardOutput=append:/root/paipai/digest.log
+StandardError=append:/root/paipai/digest.log

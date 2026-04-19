@@ -1,0 +1,12 @@
+[Unit]
+Description=派派资讯聚合 每 30 分钟推送
+Requires=paipai-digest.service
+
+[Timer]
+# 每整点 + 每半点触发
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

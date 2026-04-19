@@ -1,0 +1,16 @@
+[Unit]
+Description=Claude Paipai Message Hub
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 poller.py
+Restart=always
+RestartSec=5
+StandardOutput=append:/root/paipai/poller.log
+StandardError=append:/root/paipai/poller.log
+
+[Install]
+WantedBy=multi-user.target

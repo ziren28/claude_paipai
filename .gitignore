@@ -12,6 +12,15 @@ nodeseek.log
 
 # Runtime state (sensitive / machine-local)
 .poller_state.json
+.digest_seen.json
+.digest_translations.json
+.env.secrets
 wechat/
 wechat/state.json
 wechat/*.json
+
+# DailyHotApi is cloned at install time, don't bundle its node_modules
+tools/dailyhot/node_modules/
+tools/dailyhot/dist/
+tools/dailyhot/logs/
+tools/dailyhot/.env

@@ -1,0 +1,18 @@
+[Unit]
+Description=派派 DailyHot API (聚合 40+ 中文热榜)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/paipai/tools/dailyhot
+Environment=NODE_ENV=docker
+Environment=PORT=6688
+Environment=ALLOWED_DOMAIN=*
+ExecStart=/usr/bin/node dist/index.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=append:/root/paipai/tools/dailyhot/logs/service.log
+StandardError=append:/root/paipai/tools/dailyhot/logs/service.log
+
+[Install]
+WantedBy=multi-user.target
