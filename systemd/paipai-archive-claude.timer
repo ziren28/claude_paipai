@@ -1,0 +1,10 @@
+[Unit]
+Description=派派数字孪生 每天 00:15 UTC 备份
+Requires=paipai-archive-claude.service
+
+[Timer]
+OnCalendar=*-*-* 00:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

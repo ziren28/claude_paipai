@@ -52,6 +52,25 @@ SYNC_RULES = [
         'key': 'wechat/state.json',
         'content_type': 'application/json',
     },
+    {
+        # Claude Code OAuth credential — refreshes periodically, must stay synced
+        'pattern': '/root/.claude/.credentials.json',
+        'bucket': os.environ.get('R2_BUCKET_SECRETS', 'paipai-secrets'),
+        'key': 'claude/.credentials.json',
+        'content_type': 'application/json',
+    },
+    {
+        'pattern': '/root/.claude/settings.json',
+        'bucket': os.environ.get('R2_BUCKET_SECRETS', 'paipai-secrets'),
+        'key': 'claude/settings.json',
+        'content_type': 'application/json',
+    },
+    {
+        'pattern': '/root/.claude/settings.local.json',
+        'bucket': os.environ.get('R2_BUCKET_SECRETS', 'paipai-secrets'),
+        'key': 'claude/settings.local.json',
+        'content_type': 'application/json',
+    },
 ]
 
 CONTENT_TYPES = {
