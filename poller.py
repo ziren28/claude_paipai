@@ -11,6 +11,7 @@ import base64
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import uuid
@@ -257,8 +258,44 @@ async def _forward_to_hermes(client, text, source, **ctx):
     elif source == "wx":
         await send_wx_reply(client, ctx["from_user"], "🔮 Hermes 思考中，请稍后查看", ctx.get("context_token"))
 
+_DIGEST_SCORE_RE = re.compile(r"^\s*(\d{8}-\d{3})\s+([1-9]|10)\s*(.*?)$")
+
+
+async def _handle_digest_score(client: httpx.AsyncClient, text: str, source: str, **ctx) -> bool:
+    """Intercept `YYYYMMDD-NNN <1-10>` feedback messages → memstream digest.score."""
+    m = _DIGEST_SCORE_RE.match(text)
+    if not m:
+        return False
+    item_id, score, note = m.group(1), int(m.group(2)), m.group(3).strip()
+    try:
+        proc_result = await asyncio.create_subprocess_exec(
+            "memstream", "skill", "run", "digest.score",
+            "--args", json.dumps({"id": item_id, "score": score, "note": note}),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await proc_result.communicate()
+        data = json.loads(stdout.decode() or "{}")
+        ok = data.get("ok")
+        title = data.get("output", {}).get("title", "")
+    except Exception as e:
+        ok, title = False, str(e)
+    if ok:
+        reply = f"✅ 已记录 {item_id} = {score}/10\n📝 {title[:80]}"
+    else:
+        reply = f"⚠️ 打分失败：{title or 'unknown error'}"
+    if source == "tg":
+        await send_tg_reply(client, ctx["chat_id"], reply, ctx.get("msg_id"))
+    elif source == "wx":
+        await send_wx_reply(client, ctx["from_user"], reply, ctx.get("context_token"))
+    log.info(f"📊 score {item_id}={score} → {source}")
+    return True
+
+
 async def handle_command(client: httpx.AsyncClient, text: str, source: str, **ctx) -> bool:
-    """Handle /commands and menu interactions. Returns True if handled."""
+    """Handle /commands, digest scoring, and menu interactions. Returns True if handled."""
+    # Digest score shortcut: `YYYYMMDD-NNN 1-10 [optional note]`
+    if await _handle_digest_score(client, text, source, **ctx):
+        return True
     # /h suffix — forward to Hermes Agent
     if text.endswith("/h") or text.endswith("/H"):
         msg = text[:-2].strip()
