@@ -1,0 +1,11 @@
+[Unit]
+Description=派派 rsync 式 R2 增量同步
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 /root/paipai/sync.py
+StandardOutput=append:/root/paipai/sync.log
+StandardError=append:/root/paipai/sync.log

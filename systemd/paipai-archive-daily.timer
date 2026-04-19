@@ -1,0 +1,10 @@
+[Unit]
+Description=派派每日归档 每天 00:05 UTC 触发
+Requires=paipai-archive-daily.service
+
+[Timer]
+OnCalendar=*-*-* 00:05:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

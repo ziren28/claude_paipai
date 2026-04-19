@@ -1,0 +1,11 @@
+[Unit]
+Description=派派每日归档（昨日消息滚存到 R2）
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 /root/paipai/archive_daily.py
+StandardOutput=append:/root/paipai/archive.log
+StandardError=append:/root/paipai/archive.log

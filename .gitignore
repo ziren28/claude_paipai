@@ -15,6 +15,9 @@ nodeseek.log
 .digest_seen.json
 .digest_translations.json
 .env.secrets
+.sync_state.json
+sync.log
+archive.log
 wechat/
 wechat/state.json
 wechat/*.json

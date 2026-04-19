@@ -1,0 +1,11 @@
+[Unit]
+Description=派派 R2 同步 每分钟触发
+Requires=paipai-sync.service
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target
