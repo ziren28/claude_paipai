@@ -1,0 +1,9 @@
+[Unit]
+Description=派派日志轮转（gzip 上传 R2 + 本机清空）
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/paipai
+EnvironmentFile=/root/paipai/.env
+ExecStart=/usr/bin/python3 /root/paipai/rotate_logs.py

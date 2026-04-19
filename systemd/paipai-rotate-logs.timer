@@ -1,0 +1,10 @@
+[Unit]
+Description=派派日志每日轮转（每天 00:10 UTC）
+Requires=paipai-rotate-logs.service
+
+[Timer]
+OnCalendar=*-*-* 00:10:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
